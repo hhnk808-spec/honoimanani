@@ -13,7 +13,7 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #8FBC8F 0%, #90EE90 100%);
             min-height: 100%;
             padding: 0;
         }
@@ -38,7 +38,7 @@
             align-items: center;
             min-height: 100%;
             padding: 40px 30px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #8FBC8F 0%, #90EE90 100%);
         }
 
         .login-screen h1 {
@@ -85,14 +85,14 @@
 
         .login-box input:focus {
             outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+            border-color: #8FBC8F;
+            box-shadow: 0 0 0 4px rgba(143, 188, 143, 0.1);
         }
 
         .login-btn {
             width: 100%;
             padding: 16px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #8FBC8F 0%, #90EE90 100%);
             color: white;
             border: none;
             border-radius: 12px;
@@ -104,7 +104,7 @@
 
         .login-btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 8px 20px rgba(143, 188, 143, 0.4);
         }
 
         .login-btn:active {
@@ -118,7 +118,7 @@
         }
 
         .timeline-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #8FBC8F 0%, #90EE90 100%);
             padding: 20px 20px 24px;
             color: white;
             position: sticky;
@@ -226,7 +226,7 @@
             width: 44px;
             height: 44px;
             border-radius: 50%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #8FBC8F 0%, #90EE90 100%);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -355,6 +355,8 @@
                 return;
             }
             
+            console.log('ログイン開始:', name);
+            
             try {
                 const response = await fetch('/api/auth/login', {
                     method: 'POST',
@@ -364,19 +366,23 @@
                     body: JSON.stringify({ username: name })
                 });
 
+                console.log('ログインレスポンス:', response.status, response.statusText);
+
                 if (response.ok) {
                     const data = await response.json();
+                    console.log('ログイン成功:', data);
                     currentUser = data.user;
                     showTimeline();
                     loadPosts();
                     startPolling();
                 } else {
                     const error = await response.json();
+                    console.error('ログインエラー:', error);
                     alert(error.error || 'ログインに失敗しました');
                 }
             } catch (error) {
                 console.error('Login error:', error);
-                alert('ログインに失敗しました');
+                alert('ログインに失敗しました: ' + error.message);
             }
         }
 
