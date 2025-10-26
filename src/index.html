@@ -318,35 +318,26 @@
     <script>
         let currentUser = null;
         let posts = [];
-        let lastPostTimestamp = null;
-        let pollingInterval = null;
 
         // ページ読み込み時に認証状態をチェック
-        document.addEventListener('DOMContentLoaded', async () => {
-            await checkAuthStatus();
+        document.addEventListener('DOMContentLoaded', () => {
+            checkAuthStatus();
         });
 
-        // 認証状態チェック
-        async function checkAuthStatus() {
-            try {
-                const response = await fetch('/api/auth/me');
-                if (response.ok) {
-                    const data = await response.json();
-                    currentUser = data.user;
-                    showTimeline();
-                    loadPosts();
-                    startPolling();
-                } else {
-                    showLogin();
-                }
-            } catch (error) {
-                console.error('Auth check failed:', error);
+        // 認証状態チェック（ローカルストレージから）
+        function checkAuthStatus() {
+            const savedUser = localStorage.getItem('currentUser');
+            if (savedUser) {
+                currentUser = JSON.parse(savedUser);
+                showTimeline();
+                loadPosts();
+            } else {
                 showLogin();
             }
         }
 
-        // ログイン
-        async function login() {
+        // ログイン（ローカルストレージに保存）
+        function login() {
             const nameInput = document.getElementById('nameInput');
             const name = nameInput.value.trim();
             
@@ -355,51 +346,26 @@
                 return;
             }
             
-            console.log('ログイン開始:', name);
+            currentUser = {
+                id: Date.now(),
+                username: name,
+                last_login: new Date().toISOString()
+            };
             
-            try {
-                const response = await fetch('/api/auth/login', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ username: name })
-                });
-
-                console.log('ログインレスポンス:', response.status, response.statusText);
-
-                if (response.ok) {
-                    const data = await response.json();
-                    console.log('ログイン成功:', data);
-                    currentUser = data.user;
-                    showTimeline();
-                    loadPosts();
-                    startPolling();
-                } else {
-                    const error = await response.json();
-                    console.error('ログインエラー:', error);
-                    alert(error.error || 'ログインに失敗しました');
-                }
-            } catch (error) {
-                console.error('Login error:', error);
-                alert('ログインに失敗しました: ' + error.message);
-            }
+            // ローカルストレージに保存
+            localStorage.setItem('currentUser', JSON.stringify(currentUser));
+            
+            showTimeline();
+            loadPosts();
         }
 
-        // ログアウト
-        async function logout() {
-            try {
-                await fetch('/api/auth/logout', {
-                    method: 'POST'
-                });
-            } catch (error) {
-                console.error('Logout error:', error);
-            }
+        // ログアウト（ローカルストレージから削除）
+        function logout() {
+            localStorage.removeItem('currentUser');
+            localStorage.removeItem('posts');
             
             currentUser = null;
             posts = [];
-            lastPostTimestamp = null;
-            stopPolling();
             showLogin();
         }
 
@@ -434,8 +400,8 @@
             }
         });
 
-        // 投稿作成
-        async function postMessage() {
+        // 投稿作成（ローカルストレージに保存）
+        function postMessage() {
             const postInput = document.getElementById('postInput');
             const content = postInput.value.trim();
             
@@ -443,94 +409,34 @@
                 return;
             }
             
-            console.log('投稿開始:', content);
+            const now = new Date();
+            const post = {
+                id: Date.now(),
+                author: currentUser.username,
+                content: content,
+                date: now.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric' }),
+                time: now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }),
+                created_at: now.toISOString()
+            };
             
-            try {
-                const response = await fetch('/api/posts', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ content })
-                });
-
-                console.log('レスポンス:', response.status, response.statusText);
-
-                if (response.ok) {
-                    const data = await response.json();
-                    console.log('投稿成功:', data);
-                    posts.unshift(data.post);
-                    postInput.value = '';
-                    document.getElementById('charCount').textContent = '0 / 300';
-                    document.getElementById('charCount').classList.remove('warning');
-                    renderTimeline();
-                } else {
-                    const error = await response.json();
-                    console.error('投稿エラー:', error);
-                    alert(error.error || '投稿に失敗しました');
-                }
-            } catch (error) {
-                console.error('Post error:', error);
-                alert('投稿に失敗しました: ' + error.message);
-            }
+            posts.unshift(post);
+            postInput.value = '';
+            document.getElementById('charCount').textContent = '0 / 300';
+            document.getElementById('charCount').classList.remove('warning');
+            
+            // ローカルストレージに保存
+            localStorage.setItem('posts', JSON.stringify(posts));
+            
+            renderTimeline();
         }
 
-        // 投稿一覧読み込み
-        async function loadPosts() {
-            try {
-                const response = await fetch('/api/posts');
-                if (response.ok) {
-                    const data = await response.json();
-                    posts = data.posts;
-                    if (posts.length > 0) {
-                        lastPostTimestamp = posts[0].created_at;
-                    }
-                    renderTimeline();
-                }
-            } catch (error) {
-                console.error('Load posts error:', error);
+        // 投稿一覧読み込み（ローカルストレージから）
+        function loadPosts() {
+            const savedPosts = localStorage.getItem('posts');
+            if (savedPosts) {
+                posts = JSON.parse(savedPosts);
             }
-        }
-
-        // ポーリング開始
-        function startPolling() {
-            if (pollingInterval) {
-                clearInterval(pollingInterval);
-            }
-            pollingInterval = setInterval(checkForNewPosts, 3000); // 3秒おき
-        }
-
-        // ポーリング停止
-        function stopPolling() {
-            if (pollingInterval) {
-                clearInterval(pollingInterval);
-                pollingInterval = null;
-            }
-        }
-
-        // 新しい投稿をチェック
-        async function checkForNewPosts() {
-            if (!lastPostTimestamp) {
-                return;
-            }
-
-            try {
-                const response = await fetch(`/api/posts/latest?since=${encodeURIComponent(lastPostTimestamp)}`);
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.posts.length > 0) {
-                        // 新しい投稿を既存の投稿に追加
-                        const newPosts = data.posts.filter(newPost => 
-                            !posts.some(existingPost => existingPost.id === newPost.id)
-                        );
-                        posts = [...newPosts, ...posts];
-                        lastPostTimestamp = posts[0].created_at;
-                        renderTimeline();
-                    }
-                }
-            } catch (error) {
-                console.error('Check new posts error:', error);
-            }
+            renderTimeline();
         }
 
         function renderTimeline() {
