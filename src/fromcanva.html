@@ -134,6 +134,30 @@
             letter-spacing: -0.5px;
         }
 
+        .header-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .logout-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .logout-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
         .post-box {
             background: white;
             border-radius: 16px;
@@ -267,16 +291,19 @@
         <!-- タイムライン画面 -->
         <div class="timeline-screen" id="timelineScreen">
             <div class="timeline-header">
-                <h2>いまなにしてる？</h2>
+                <div class="header-controls">
+                    <h2>いまなにしてる？</h2>
+                    <button class="logout-btn" onclick="logout()">ログアウト</button>
+                </div>
                 <div class="post-box">
                     <textarea 
                         class="post-input" 
                         id="postInput" 
                         placeholder="今何してる？"
-                        maxlength="50"
-                        rows="2"
+                        maxlength="300"
+                        rows="3"
                     ></textarea>
-                    <div class="char-count" id="charCount">0 / 50</div>
+                    <div class="char-count" id="charCount">0 / 300</div>
                 </div>
             </div>
             <div class="timeline-content" id="timelineContent">
@@ -289,10 +316,37 @@
     </div>
 
     <script>
-        let currentUser = '';
+        let currentUser = null;
         let posts = [];
+        let lastPostTimestamp = null;
+        let pollingInterval = null;
 
-        function login() {
+        // ページ読み込み時に認証状態をチェック
+        document.addEventListener('DOMContentLoaded', async () => {
+            await checkAuthStatus();
+        });
+
+        // 認証状態チェック
+        async function checkAuthStatus() {
+            try {
+                const response = await fetch('/api/auth/me');
+                if (response.ok) {
+                    const data = await response.json();
+                    currentUser = data.user;
+                    showTimeline();
+                    loadPosts();
+                    startPolling();
+                } else {
+                    showLogin();
+                }
+            } catch (error) {
+                console.error('Auth check failed:', error);
+                showLogin();
+            }
+        }
+
+        // ログイン
+        async function login() {
             const nameInput = document.getElementById('nameInput');
             const name = nameInput.value.trim();
             
@@ -301,19 +355,66 @@
                 return;
             }
             
-            currentUser = name;
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username: name })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    currentUser = data.user;
+                    showTimeline();
+                    loadPosts();
+                    startPolling();
+                } else {
+                    const error = await response.json();
+                    alert(error.error || 'ログインに失敗しました');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                alert('ログインに失敗しました');
+            }
+        }
+
+        // ログアウト
+        async function logout() {
+            try {
+                await fetch('/api/auth/logout', {
+                    method: 'POST'
+                });
+            } catch (error) {
+                console.error('Logout error:', error);
+            }
+            
+            currentUser = null;
+            posts = [];
+            lastPostTimestamp = null;
+            stopPolling();
+            showLogin();
+        }
+
+        // 画面表示切り替え
+        function showLogin() {
+            document.getElementById('loginScreen').classList.remove('hidden');
+            document.getElementById('timelineScreen').style.display = 'none';
+        }
+
+        function showTimeline() {
             document.getElementById('loginScreen').classList.add('hidden');
             document.getElementById('timelineScreen').style.display = 'block';
-            
             document.getElementById('postInput').focus();
         }
 
         document.getElementById('postInput').addEventListener('input', function(e) {
             const length = e.target.value.length;
             const charCount = document.getElementById('charCount');
-            charCount.textContent = `${length} / 50`;
+            charCount.textContent = `${length} / 300`;
             
-            if (length >= 45) {
+            if (length >= 270) {
                 charCount.classList.add('warning');
             } else {
                 charCount.classList.remove('warning');
@@ -327,7 +428,8 @@
             }
         });
 
-        function postMessage() {
+        // 投稿作成
+        async function postMessage() {
             const postInput = document.getElementById('postInput');
             const content = postInput.value.trim();
             
@@ -335,21 +437,94 @@
                 return;
             }
             
-            const now = new Date();
-            const post = {
-                id: Date.now(),
-                author: currentUser,
-                content: content,
-                date: now.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric' }),
-                time: now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
-            };
+            console.log('投稿開始:', content);
             
-            posts.unshift(post);
-            postInput.value = '';
-            document.getElementById('charCount').textContent = '0 / 50';
-            document.getElementById('charCount').classList.remove('warning');
-            
-            renderTimeline();
+            try {
+                const response = await fetch('/api/posts', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ content })
+                });
+
+                console.log('レスポンス:', response.status, response.statusText);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('投稿成功:', data);
+                    posts.unshift(data.post);
+                    postInput.value = '';
+                    document.getElementById('charCount').textContent = '0 / 300';
+                    document.getElementById('charCount').classList.remove('warning');
+                    renderTimeline();
+                } else {
+                    const error = await response.json();
+                    console.error('投稿エラー:', error);
+                    alert(error.error || '投稿に失敗しました');
+                }
+            } catch (error) {
+                console.error('Post error:', error);
+                alert('投稿に失敗しました: ' + error.message);
+            }
+        }
+
+        // 投稿一覧読み込み
+        async function loadPosts() {
+            try {
+                const response = await fetch('/api/posts');
+                if (response.ok) {
+                    const data = await response.json();
+                    posts = data.posts;
+                    if (posts.length > 0) {
+                        lastPostTimestamp = posts[0].created_at;
+                    }
+                    renderTimeline();
+                }
+            } catch (error) {
+                console.error('Load posts error:', error);
+            }
+        }
+
+        // ポーリング開始
+        function startPolling() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+            }
+            pollingInterval = setInterval(checkForNewPosts, 3000); // 3秒おき
+        }
+
+        // ポーリング停止
+        function stopPolling() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+        }
+
+        // 新しい投稿をチェック
+        async function checkForNewPosts() {
+            if (!lastPostTimestamp) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/posts/latest?since=${encodeURIComponent(lastPostTimestamp)}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.posts.length > 0) {
+                        // 新しい投稿を既存の投稿に追加
+                        const newPosts = data.posts.filter(newPost => 
+                            !posts.some(existingPost => existingPost.id === newPost.id)
+                        );
+                        posts = [...newPosts, ...posts];
+                        lastPostTimestamp = posts[0].created_at;
+                        renderTimeline();
+                    }
+                }
+            } catch (error) {
+                console.error('Check new posts error:', error);
+            }
         }
 
         function renderTimeline() {
